@@ -1,0 +1,37 @@
+[package]
+name = "blade-and-mod-manager-sourcery"
+version = "0.1.0"
+description = "BladeAndModManagerSourcery — mod manager for Blade & Sorcery PCVR"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "blade_and_mod_manager_sourcery_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "macros", "sync"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+dirs = "6"
+thiserror = "2"
+walkdir = "2"
+futures-util = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"

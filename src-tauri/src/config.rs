@@ -4,12 +4,14 @@ use crate::secret::{
     clear_nexus_api_key, has_nexus_api_key, load_nexus_api_key, store_nexus_api_key,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 const APP_DIR_NAME: &str = "BladeAndModManagerSourcery";
 const CONFIG_FILE: &str = "config.json";
 const INSTALLED_FILE: &str = "installed.json";
+const BOXES_FILE: &str = "boxes.json";
 
 /// Public app config returned to the frontend. Never includes the raw API key.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -48,6 +50,27 @@ pub struct InstalledRecord {
 #[serde(rename_all = "camelCase")]
 pub struct InstalledIndex {
     pub mods: Vec<InstalledRecord>,
+}
+
+/// A named local collection of mods ("box"), e.g. one per game version.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ModBox {
+    pub id: String,
+    pub name: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxesFile {
+    #[serde(default)]
+    pub boxes: Vec<ModBox>,
+    #[serde(default)]
+    pub active_box_id: Option<String>,
+    /// Mod folder name → box id.
+    #[serde(default)]
+    pub assignments: HashMap<String, String>,
 }
 
 pub fn app_data_dir() -> AppResult<PathBuf> {
@@ -208,4 +231,24 @@ pub fn remove_installed(folder_name: &str) -> AppResult<()> {
         .mods
         .retain(|m| !m.folder_name.eq_ignore_ascii_case(folder_name));
     save_installed(&index)
+}
+
+pub fn boxes_path() -> AppResult<PathBuf> {
+    Ok(app_data_dir()?.join(BOXES_FILE))
+}
+
+pub fn load_boxes() -> AppResult<BoxesFile> {
+    let path = boxes_path()?;
+    if !path.exists() {
+        return Ok(BoxesFile::default());
+    }
+    let data = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&data)?)
+}
+
+pub fn save_boxes(state: &BoxesFile) -> AppResult<()> {
+    let path = boxes_path()?;
+    let data = serde_json::to_string_pretty(state)?;
+    fs::write(path, data)?;
+    Ok(())
 }

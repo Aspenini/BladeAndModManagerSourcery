@@ -1,6 +1,6 @@
 [package]
 name = "blade-and-mod-manager-sourcery"
-version = "0.1.0"
+version = "0.2.0"
 description = "BladeAndModManagerSourcery — mod manager for Blade & Sorcery PCVR"
 authors = ["you"]
 edition = "2021"

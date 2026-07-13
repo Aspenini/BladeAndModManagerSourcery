@@ -53,6 +53,35 @@ const modern = {
   installed: "Installed “{name}”",
   importTitle: "Import mod ZIP",
   modArchive: "Mod archive",
+  cannotToggleNoManifest:
+    "This folder has no manifest.json, so the game ignores it and it can't be toggled.",
+  forGameVersion: "for {v}",
+
+  // Boxes (local collections)
+  boxesTitle: "Mod boxes",
+  boxesDesc:
+    "Group mods into boxes — for example one per game version (U7, 1.0). Activating a box enables its mods and disables mods from other boxes; unboxed mods are left alone. New installs join the active box.",
+  boxAll: "All ({n})",
+  boxUnboxed: "Unboxed ({n})",
+  newBoxPlaceholder: "New box name (e.g. U12)",
+  createBox: "Create box",
+  activateBox: "Activate",
+  deactivateBox: "Deactivate",
+  activeBadge: "Active",
+  renameBox: "Rename",
+  deleteBox: "Delete",
+  confirmDeleteBox:
+    "Delete box “{name}”? Its mods stay installed — they just leave the box.",
+  boxCreated: "Created box “{name}”",
+  boxRenamed: "Renamed box to “{name}”",
+  boxDeleted: "Deleted box “{name}”",
+  boxActivated:
+    "Activated “{name}” — {enabled} enabled, {disabled} disabled",
+  boxActivationIssues: "Some mods could not be switched: {issues}",
+  boxDeactivated: "Box deactivated. Mod states were left unchanged.",
+  renameNeedsName: "Type the new name into the box-name field first.",
+  noBox: "No box",
+  boxSelectLabel: "Box for {name}",
 
   // Browse
   browseTitle: "Browse Nexus",
@@ -196,6 +225,34 @@ const old: Record<MessageKey, string> = {
   installed: "Inscribed “{name}”",
   importTitle: "Bring forth a mod ZIP",
   modArchive: "Mod archive",
+  cannotToggleNoManifest:
+    "This vault bears no charter (manifest.json); the game heeds it not, and it cannot be waked nor lulled.",
+  forGameVersion: "for {v}",
+
+  boxesTitle: "The Coffers",
+  boxesDesc:
+    "Gather enchantments into coffers — one for each age of the game, if thou wilt (U7, 1.0). Unsealing a coffer wakes its enchantments and lulls those of other coffers; uncoffered enchantments rest undisturbed. New inscriptions join the unsealed coffer.",
+  boxAll: "All ({n})",
+  boxUnboxed: "Uncoffered ({n})",
+  newBoxPlaceholder: "Name a new coffer (e.g. U12)",
+  createBox: "Forge a coffer",
+  activateBox: "Unseal",
+  deactivateBox: "Seal again",
+  activeBadge: "Unsealed",
+  renameBox: "Rechristen",
+  deleteBox: "Destroy",
+  confirmDeleteBox:
+    "Destroy the coffer “{name}”? Its enchantments remain inscribed — they merely leave the coffer.",
+  boxCreated: "The coffer “{name}” is forged",
+  boxRenamed: "The coffer is rechristened “{name}”",
+  boxDeleted: "The coffer “{name}” is no more",
+  boxActivated:
+    "“{name}” is unsealed — {enabled} waked, {disabled} lulled",
+  boxActivationIssues: "Some enchantments would not be swayed: {issues}",
+  boxDeactivated: "The coffer is sealed. The enchantments rest as they were.",
+  renameNeedsName: "First inscribe the new name in the coffer-name field.",
+  noBox: "No coffer",
+  boxSelectLabel: "Coffer for {name}",
 
   browseTitle: "Seek the Nexus",
   browseDesc:

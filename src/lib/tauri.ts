@@ -29,11 +29,38 @@ export type LocalMod = {
   author?: string | null;
   version?: string | null;
   description?: string | null;
+  /** Game version the mod's manifest declares compatibility with. */
+  gameVersion?: string | null;
   enabled: boolean;
   path: string;
+  /** False when the folder has no manifest at all — the game ignores it and it can't be toggled. */
   hasManifest: boolean;
   nexusModId?: number | null;
   nexusFileId?: number | null;
+  /** Box (local collection) this mod belongs to, if any. */
+  boxId?: string | null;
+};
+
+export type ModBox = {
+  id: string;
+  name: string;
+  createdAt?: string | null;
+};
+
+export type BoxesState = {
+  boxes: ModBox[];
+  activeBoxId?: string | null;
+  /** Mod folder name → box id. */
+  assignments: Record<string, string>;
+};
+
+export type ActivateReport = {
+  boxId: string;
+  boxName: string;
+  enabled: number;
+  disabled: number;
+  skipped: string[];
+  errors: string[];
 };
 
 export type NexusUser = {
@@ -107,6 +134,16 @@ export const api = {
     invoke<void>("remove_mod", { folderName }),
   importArchive: (archivePath: string) =>
     invoke<string>("import_mod_archive", { archivePath }),
+  listBoxes: () => invoke<BoxesState>("list_boxes"),
+  createBox: (name: string) => invoke<BoxesState>("create_box", { name }),
+  renameBox: (boxId: string, name: string) =>
+    invoke<BoxesState>("rename_box", { boxId, name }),
+  deleteBox: (boxId: string) => invoke<BoxesState>("delete_box", { boxId }),
+  assignModBox: (folderName: string, boxId: string | null) =>
+    invoke<BoxesState>("assign_mod_box", { folderName, boxId }),
+  activateBox: (boxId: string) =>
+    invoke<ActivateReport>("activate_box", { boxId }),
+  clearActiveBox: () => invoke<BoxesState>("clear_active_box"),
   nexusValidate: (apiKey: string) =>
     invoke<NexusUser>("nexus_validate", { apiKey }),
   nexusSaveApiKey: (apiKey: string) =>

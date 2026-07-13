@@ -7,7 +7,19 @@ A clean desktop mod manager for **Blade & Sorcery** (PCVR), built with **Rust + 
 - Browses and installs mods from **Nexus Mods** (`bladeandsorcery`)
 - Installs into `BladeAndSorcery_Data\StreamingAssets\Mods`
 - Enable / disable / uninstall local mods; import ZIP archives
+- **Mod boxes** — local collections (e.g. one per game version: `U7`, `U12`, `1.0`). Activate a box to enable its mods and disable every mod that belongs to another box; unboxed mods are untouched. New installs join the active box.
+- Shows each mod’s declared **GameVersion** so you can match mods to the game build you’re running (switch builds via Steam → Properties → Betas)
 - Stores your Nexus API key in **Windows Credential Manager** (never in plain-text config)
+
+### How enable/disable works
+
+Blade & Sorcery loads **any** folder under `StreamingAssets\Mods` whose root
+contains a `manifest.json` — folder names are irrelevant to the loader, so
+renaming a folder to `Name.disabled` does *not* disable it. This app disables
+a mod by renaming its `manifest.json` → `manifest.json.disabled` in place; the
+game then ignores the folder entirely. Enabling renames it back. Folders left
+over from the old folder-rename scheme are migrated automatically the next
+time the library is scanned.
 
 ## Requirements
 
@@ -46,6 +58,7 @@ bun run tauri:build
 |------|--------|
 | Config (`config.json`) | `%AppData%\BladeAndModManagerSourcery\` |
 | Installed-mod index | same folder (`installed.json`) |
+| Mod boxes (collections) | same folder (`boxes.json`) |
 | Logs | `%AppData%\BladeAndModManagerSourcery\logs\app-YYYY-MM-DD.log` |
 | Nexus download cache | `%AppData%\BladeAndModManagerSourcery\downloads\` |
 | Nexus API key | Windows Credential Manager (`BladeAndModManagerSourcery` / `nexus-api-key`) |

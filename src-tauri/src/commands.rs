@@ -2,6 +2,8 @@ use crate::config::{load_config, save_config, AppConfig};
 use crate::error::{AppError, AppResult};
 use crate::game::detect::{detect_game, inspect_path, DetectedGame};
 use crate::game::paths::{ensure_mods_dir, resolve_paths, GamePaths};
+use crate::config::BoxesFile;
+use crate::mods::boxes::{self, ActivateReport};
 use crate::mods::install::{install_from_archive, set_mod_enabled, uninstall_mod};
 use crate::mods::scan::{list_installed_mods, LocalMod};
 use crate::nexus::client::{
@@ -129,6 +131,43 @@ pub fn remove_mod(folder_name: String) -> AppResult<()> {
     let config = load_config()?;
     let game = require_game_path(&config)?;
     uninstall_mod(&game, &folder_name)
+}
+
+#[tauri::command]
+pub fn list_boxes() -> AppResult<BoxesFile> {
+    boxes::get_boxes()
+}
+
+#[tauri::command]
+pub fn create_box(name: String) -> AppResult<BoxesFile> {
+    boxes::create_box(&name)
+}
+
+#[tauri::command]
+pub fn rename_box(box_id: String, name: String) -> AppResult<BoxesFile> {
+    boxes::rename_box(&box_id, &name)
+}
+
+#[tauri::command]
+pub fn delete_box(box_id: String) -> AppResult<BoxesFile> {
+    boxes::delete_box(&box_id)
+}
+
+#[tauri::command]
+pub fn assign_mod_box(folder_name: String, box_id: Option<String>) -> AppResult<BoxesFile> {
+    boxes::assign_mod(&folder_name, box_id.as_deref())
+}
+
+#[tauri::command]
+pub fn activate_box(box_id: String) -> AppResult<ActivateReport> {
+    let config = load_config()?;
+    let game = require_game_path(&config)?;
+    boxes::activate_box(&game, &box_id)
+}
+
+#[tauri::command]
+pub fn clear_active_box() -> AppResult<BoxesFile> {
+    boxes::clear_active_box()
 }
 
 #[tauri::command]

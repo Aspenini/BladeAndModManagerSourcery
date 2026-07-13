@@ -1104,3 +1104,36 @@ button.status-seal {
     max-width: none;
   }
 }
+
+/* Mod boxes (local collections) */
+.box-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.box-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.box-active-badge {
+  margin-left: 0.45rem;
+}
+
+.box-actions-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 0.25rem;
+}
+
+.box-select {
+  max-width: 150px;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  font-size: 0.85rem;
+}

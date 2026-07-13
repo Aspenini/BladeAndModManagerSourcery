@@ -1,6 +1,7 @@
 use crate::config::{remove_installed, upsert_installed, InstalledRecord};
 use crate::error::{AppError, AppResult};
 use crate::game::paths::{disabled_name, enabled_name, ensure_mods_dir, is_disabled_folder_name};
+use crate::mods::{MANIFEST, MANIFEST_DISABLED};
 use chrono::Utc;
 use std::fs;
 use std::io;
@@ -71,22 +72,18 @@ pub fn install_from_archive(
         let folder_name = sanitize_folder_name(&folder_name_owned);
 
         let dest = mods_dir.join(&folder_name);
-        let disabled = mods_dir.join(disabled_name(&folder_name));
-        if dest.exists() || disabled.exists() {
-            // Idempotent success when this exact folder already exists from a
-            // concurrent/duplicate NXM delivery of the same install.
-            crate::log::warn(format!(
-                "Mod folder already present ({folder_name}); treating install as complete"
-            ));
-            let _ = upsert_installed(InstalledRecord {
-                folder_name: folder_name.clone(),
-                nexus_mod_id,
-                nexus_file_id,
-                mod_name: mod_name.map(|s| s.to_string()),
-                version: version.map(|s| s.to_string()),
-                installed_at: Some(Utc::now().to_rfc3339()),
-            });
-            return Ok(folder_name);
+        // Replace an existing copy so installing again acts as update/reinstall.
+        // (Concurrent duplicate NXM deliveries are already deduped upstream.)
+        for existing in [dest.clone(), mods_dir.join(disabled_name(&folder_name))] {
+            if existing.exists() {
+                crate::log::warn(format!(
+                    "Replacing existing mod folder: {}",
+                    existing.display()
+                ));
+                fs::remove_dir_all(&existing).map_err(|e| {
+                    crate::log::io_ctx(&existing, "removing previous mod version", e)
+                })?;
+            }
         }
 
         if let Err(error) = copy_dir_recursive(&mod_root, &dest) {
@@ -105,6 +102,9 @@ pub fn install_from_archive(
             version: version.map(|s| s.to_string()),
             installed_at: Some(Utc::now().to_rfc3339()),
         })?;
+
+        // New installs join the active box, if one is selected.
+        crate::mods::boxes::assign_to_active_box(&folder_name);
 
         crate::log::info(format!(
             "Install complete: folder={folder_name} dest={}",
@@ -135,6 +135,7 @@ pub fn uninstall_mod(game_root: &Path, folder_name: &str) -> AppResult<()> {
             fs::remove_dir_all(&alt)?;
             remove_installed(&enabled_name(folder_name))?;
             remove_installed(folder_name)?;
+            let _ = crate::mods::boxes::assign_mod(folder_name, None);
             return Ok(());
         }
         return Err(AppError::msg(format!(
@@ -144,44 +145,105 @@ pub fn uninstall_mod(game_root: &Path, folder_name: &str) -> AppResult<()> {
     fs::remove_dir_all(&path)?;
     remove_installed(&enabled_name(folder_name))?;
     remove_installed(folder_name)?;
+    let _ = crate::mods::boxes::assign_mod(folder_name, None);
     Ok(())
 }
 
+/// Enable or disable a mod in place by renaming its `manifest.json`.
+///
+/// The game loads every folder in `Mods` whose root contains a manifest —
+/// folder names mean nothing to it, so renaming the folder (the old approach)
+/// never actually disabled anything. Renaming the manifest makes the loader
+/// skip the folder entirely, and the mod's files stay where they are.
 pub fn set_mod_enabled(game_root: &Path, folder_name: &str, enabled: bool) -> AppResult<String> {
     validate_mod_folder_name(folder_name)?;
     let mods_dir = ensure_mods_dir(game_root)?;
-    let current = mods_dir.join(folder_name);
-    if !current.exists() {
+    let dir = mods_dir.join(folder_name);
+    if !dir.is_dir() {
         return Err(AppError::msg(format!(
             "Mod folder not found: {folder_name}"
         )));
     }
 
-    let is_disabled = is_disabled_folder_name(folder_name);
-    if enabled && is_disabled {
-        let new_name = enabled_name(folder_name);
-        let dest = mods_dir.join(&new_name);
-        if dest.exists() {
+    let active = dir.join(MANIFEST);
+    let dormant = dir.join(MANIFEST_DISABLED);
+
+    if enabled {
+        if active.exists() {
+            return Ok(folder_name.to_string()); // already enabled
+        }
+        if !dormant.exists() {
             return Err(AppError::msg(format!(
-                "Cannot enable: target folder already exists ({new_name})"
+                "Cannot enable “{folder_name}”: no manifest.json found in the mod folder."
             )));
         }
-        fs::rename(&current, &dest)?;
-        return Ok(new_name);
-    }
-    if !enabled && !is_disabled {
-        let new_name = disabled_name(folder_name);
-        let dest = mods_dir.join(&new_name);
-        if dest.exists() {
+        fs::rename(&dormant, &active)
+            .map_err(|e| crate::log::io_ctx(&dormant, "restoring manifest.json", e))?;
+    } else {
+        if dormant.exists() && !active.exists() {
+            return Ok(folder_name.to_string()); // already disabled
+        }
+        if !active.exists() {
             return Err(AppError::msg(format!(
-                "Cannot disable: target folder already exists ({new_name})"
+                "Cannot disable “{folder_name}”: no manifest.json found in the mod folder."
             )));
         }
-        fs::rename(&current, &dest)?;
-        return Ok(new_name);
+        // If a stale manifest.json.disabled is in the way, drop it in favor of
+        // the live manifest.
+        if dormant.exists() {
+            fs::remove_file(&dormant)
+                .map_err(|e| crate::log::io_ctx(&dormant, "removing stale disabled manifest", e))?;
+        }
+        fs::rename(&active, &dormant)
+            .map_err(|e| crate::log::io_ctx(&active, "parking manifest.json", e))?;
     }
 
+    crate::log::info(format!(
+        "Mod “{folder_name}” is now {}",
+        if enabled { "enabled" } else { "disabled" }
+    ));
     Ok(folder_name.to_string())
+}
+
+/// Migrate a legacy `<Name>.disabled` folder (the old, non-functional disable
+/// mechanism) into the manifest-rename scheme: restore the folder name and
+/// park its manifest, preserving the user's intent that the mod be disabled.
+pub fn migrate_legacy_disabled_folder(mods_dir: &Path, folder_name: &str) -> Option<String> {
+    if !is_disabled_folder_name(folder_name) {
+        return None;
+    }
+    let src = mods_dir.join(folder_name);
+    let base = enabled_name(folder_name);
+    let dest = mods_dir.join(&base);
+
+    // Park the manifest first so the mod stops loading even if the folder
+    // rename below cannot happen.
+    let active = src.join(MANIFEST);
+    let dormant = src.join(MANIFEST_DISABLED);
+    if active.exists() && !dormant.exists() {
+        let _ = fs::rename(&active, &dormant);
+    }
+
+    if dest.exists() {
+        crate::log::warn(format!(
+            "Legacy disabled folder “{folder_name}” conflicts with “{base}”; leaving name as-is"
+        ));
+        return None;
+    }
+    match fs::rename(&src, &dest) {
+        Ok(()) => {
+            crate::log::info(format!(
+                "Migrated legacy disabled mod “{folder_name}” → “{base}” (manifest parked)"
+            ));
+            Some(base)
+        }
+        Err(e) => {
+            crate::log::warn(format!(
+                "Could not rename legacy disabled folder “{folder_name}”: {e}"
+            ));
+            None
+        }
+    }
 }
 
 fn extract_zip(archive: &Path, dest: &Path) -> AppResult<()> {
@@ -346,5 +408,78 @@ mod tests {
     #[test]
     fn sanitizes_windows_invalid_characters() {
         assert_eq!(sanitize_folder_name("A/B: C"), "A_B_ C");
+    }
+
+    fn temp_game_root(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "bams-test-{tag}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let mods = root.join("BladeAndSorcery_Data/StreamingAssets/Mods");
+        fs::create_dir_all(&mods).unwrap();
+        root
+    }
+
+    fn mods_dir_of(root: &Path) -> PathBuf {
+        root.join("BladeAndSorcery_Data/StreamingAssets/Mods")
+    }
+
+    #[test]
+    fn disable_parks_the_manifest_and_keeps_the_folder_name() {
+        let root = temp_game_root("toggle");
+        let mod_dir = mods_dir_of(&root).join("CoolSword");
+        fs::create_dir_all(&mod_dir).unwrap();
+        fs::write(mod_dir.join(MANIFEST), "{\"Name\":\"Cool Sword\"}").unwrap();
+
+        let name = set_mod_enabled(&root, "CoolSword", false).unwrap();
+        assert_eq!(name, "CoolSword");
+        assert!(!mod_dir.join(MANIFEST).exists());
+        assert!(mod_dir.join(MANIFEST_DISABLED).exists());
+
+        // Re-enable restores the manifest.
+        set_mod_enabled(&root, "CoolSword", true).unwrap();
+        assert!(mod_dir.join(MANIFEST).exists());
+        assert!(!mod_dir.join(MANIFEST_DISABLED).exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn toggle_is_idempotent_and_errors_without_manifest() {
+        let root = temp_game_root("idem");
+        let mod_dir = mods_dir_of(&root).join("NoManifest");
+        fs::create_dir_all(&mod_dir).unwrap();
+
+        assert!(set_mod_enabled(&root, "NoManifest", false).is_err());
+        assert!(set_mod_enabled(&root, "NoManifest", true).is_err());
+
+        fs::write(mod_dir.join(MANIFEST), "{}").unwrap();
+        set_mod_enabled(&root, "NoManifest", true).unwrap(); // already enabled: no-op
+        assert!(mod_dir.join(MANIFEST).exists());
+        set_mod_enabled(&root, "NoManifest", false).unwrap();
+        set_mod_enabled(&root, "NoManifest", false).unwrap(); // already disabled: no-op
+        assert!(mod_dir.join(MANIFEST_DISABLED).exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn migrates_legacy_disabled_folder_to_parked_manifest() {
+        let root = temp_game_root("legacy");
+        let mods = mods_dir_of(&root);
+        let legacy = mods.join("OldMod.disabled");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join(MANIFEST), "{\"Name\":\"Old Mod\"}").unwrap();
+
+        let migrated = migrate_legacy_disabled_folder(&mods, "OldMod.disabled");
+        assert_eq!(migrated.as_deref(), Some("OldMod"));
+        let new_dir = mods.join("OldMod");
+        assert!(new_dir.is_dir());
+        assert!(!legacy.exists());
+        assert!(new_dir.join(MANIFEST_DISABLED).exists());
+        assert!(!new_dir.join(MANIFEST).exists());
+
+        let _ = fs::remove_dir_all(&root);
     }
 }
